@@ -1,0 +1,120 @@
+#!/bin/bash
+
+
+FILE="/tmp/check_dr.txt"
+EXTIP=`dig +short myip.opendns.com`
+
+add() {
+    if valid_ip $ADD; then
+        echo $ADD >> $FILE
+        echo "Added $ADD to whitelist"
+    else
+        echo "$ADD is not a valid ip"
+    fi
+}
+
+delete() {
+    found=0
+    if valid_ip $DELETE; then
+        for line in `cat $FILE`; do
+            if [[ $DELETE == $line ]]; then
+                found=1
+            fi
+        done
+    else
+        echo "$DELETE is not a valid ip"
+        exit
+    fi
+
+    if [ $found == 0 ]; then
+        echo "$DELETE was not found in the whitelist"
+    else
+        sed -i -e "/$DELETE/d" $FILE
+        echo "deleted $DELETE from whitelist"
+    fi
+}
+        
+
+check() {
+    checkfound=0
+    echo "current ext ip: $EXTIP"
+    if [[ ! -s $FILE ]]; then
+        echo "No ipaddresses in whitelist, please add"
+    else
+        for line in `cat $FILE`; do
+            if [[ $line == $EXTIP ]]; then
+                checkfound=1
+            fi
+        done
+        if [ $checkfound == 1 ]; then
+            echo "ok"
+            exit 0
+        else
+            echo "NOT OK"
+            exit 1
+        fi
+    fi
+}
+
+list() {
+    echo "current ext IP: $EXTIP"
+    for line in `cat $FILE`; do
+        echo $line
+    done
+}
+
+
+function valid_ip()
+{
+    local  ip=$1
+    local  stat=1
+
+    if [[ $ip =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+        OIFS=$IFS
+        IFS='.'
+        ip=($ip)
+        IFS=$OIFS
+        [[ ${ip[0]} -le 255 && ${ip[1]} -le 255 \
+            && ${ip[2]} -le 255 && ${ip[3]} -le 255 ]]
+        stat=$?
+    fi
+    return $stat
+}
+
+if [ ! -f $FILE ]; then
+    touch $FILE
+    echo "whitelist db missing, please add ip addresses to use this tool"
+    exit
+fi
+
+
+if [[ $1 == '' ]]; then
+    check
+else
+
+    while getopts ":a:d:l" opt; do
+        case ${opt} in
+            a )
+                ADD="$OPTARG"
+                add
+                ;;
+            d )
+                DELETE=$OPTARG
+                delete
+                ;;
+            l )
+                list
+                ;;
+
+            \? )
+                echo "check_dr by Bryan Thompson"
+                echo "checks a whitelist of external ip addresses. add the addresses for your production and test environments"
+                echo "use this to check if you're at a DR location to prevent processing files from internet sites"
+                echo ""
+                echo "usage check_dr [-l list] [-a <ip> add ip] [-d <ip> delte ip]"
+                echo "use without options to check status return code of 0 is good 1 is bad"
+                ;;
+        esac
+    done
+fi
+shift $((OPTIND -1))
